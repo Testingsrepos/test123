@@ -1,0 +1,31 @@
+name: Check Reviewer_team Approval
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-Reviewer-team-approval:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Check for Reviewer_team approval
+      run: |
+        PR_URL="https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews"
+        
+        # Get the reviews using the GitHub API
+        REVIEWS=$(curl -s -H "Authorization: token ${{ secrets.MY_GITHUB_TOKEN }}" $PR_URL)
+        
+        # Check if any approval came from reviewe_team members
+        REVIEWE_TEAM_APPROVAL=$(echo "$REVIEWS" | jq '[.[] | select(.user.login | test("^@your-org/reviewe_team"))] | length')
+
+        # Fail the action if no reviewe_team approval
+        if [ "$REVIEWE_TEAM_APPROVAL" -lt 1 ]; then
+          echo "This pull request needs approval from a reviewe_team member before it can be merged."
+          exit 1
+        else
+          echo "reviewe_team has approved this pull request."
+        fi
