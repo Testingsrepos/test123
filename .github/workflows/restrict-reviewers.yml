@@ -1,0 +1,64 @@
+name: Restrict Reviewers
+
+on:
+  pull_request:
+    types: [opened, edited, review_requested]
+
+jobs:
+  check-reviewers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Debug CODEOWNERS Path
+        run: |
+          ls -l .github
+          if [ -f ".github/CODEOWNERS" ]; then
+            echo "CODEOWNERS file found."
+          else
+            echo "ERROR: CODEOWNERS file not found at .github/CODEOWNERS."
+            exit 1
+          fi
+
+      - name: Verify Code Owner Reviewers
+        run: |
+          # Set the CODEOWNERS file path
+          CODEOWNERS_FILE=".github/CODEOWNERS"
+
+          # Extract all reviewers (users and teams) from CODEOWNERS
+          CODEOWNERS_REVIEWERS=$(grep -v '^#' "$CODEOWNERS_FILE" | awk '{for (i=2; i<=NF; i++) print $i}' | sort | uniq)
+
+          # Get actual reviewers (individuals and teams) from the pull request
+          PR_REVIEWERS=$(gh pr view ${{ github.event.pull_request.number }} --json reviewRequests --jq '.reviewRequests[].requestedReviewer.login')
+          PR_TEAM_REVIEWERS=$(gh pr view ${{ github.event.pull_request.number }} --json reviewRequests --jq '.reviewRequests[].requestedTeam.slug')
+          
+          # Find non-CodeOwner individual reviewers
+          NON_CODEOWNERS=$(echo "$PR_REVIEWERS" | grep -vF "$CODEOWNERS_REVIEWERS" || true)
+          
+          # Find non-CodeOwner team reviewers
+          NON_CODEOWNER_TEAMS=$(echo "$PR_TEAM_REVIEWERS" | grep -vF "$CODEOWNERS_REVIEWERS" || true)
+          
+          # Remove unauthorized individual reviewers
+          if [ -n "$NON_CODEOWNERS" ]; then
+            echo "Non-CodeOwner individual reviewers found: $NON_CODEOWNERS"
+            for reviewer in $NON_CODEOWNERS; do
+              gh pr reviewer remove ${{ github.event.pull_request.number }} --reviewer "$reviewer"
+            done
+          fi
+          
+          # Remove unauthorized team reviewers
+          if [ -n "$NON_CODEOWNER_TEAMS" ]; then
+            echo "Non-CodeOwner team reviewers found: $NON_CODEOWNER_TEAMS"
+            for team in $NON_CODEOWNER_TEAMS; do
+              gh pr reviewer remove ${{ github.event.pull_request.number }} --team "$team"
+            done
+          fi
+
+      - name: Fail if unauthorized reviewers were present
+        run: |
+          if [ -n "$NON_CODEOWNERS" ] || [ -n "$NON_CODEOWNER_TEAMS" ]; then
+            echo "Unauthorized reviewers detected and removed. Failing the check."
+            exit 1
+          fi
