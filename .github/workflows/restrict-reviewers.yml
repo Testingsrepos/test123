@@ -12,17 +12,21 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
+      - name: Debug CODEOWNERS Path
+        run: |
+          ls -l .github
+          if [ -f ".github/CODEOWNERS" ]; then
+            echo "CODEOWNERS file found."
+          else
+            echo "ERROR: CODEOWNERS file not found at .github/CODEOWNERS."
+            exit 1
+          fi
+
       - name: Verify Code Owner Reviewers
         run: |
           # Set the CODEOWNERS file path
           CODEOWNERS_FILE=".github/CODEOWNERS"
 
-          # Check if CODEOWNERS exists
-          if [ ! -f "$CODEOWNERS_FILE" ]; then
-            echo "ERROR: CODEOWNERS file not found at $CODEOWNERS_FILE."
-            exit 1
-          fi
-          
           # Extract all reviewers (users and teams) from CODEOWNERS
           CODEOWNERS_REVIEWERS=$(grep -v '^#' "$CODEOWNERS_FILE" | awk '{for (i=2; i<=NF; i++) print $i}' | sort | uniq)
 
